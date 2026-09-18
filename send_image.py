@@ -106,20 +106,31 @@ def main():
     print("      Dang ban luong anh tho (153.600 bytes) truc tiep vao LCD...")
     start_time = time.time()
     
-    chunk_size = 1024
-    for i in range(0, len(raw_bytes), chunk_size):
-        ser.write(raw_bytes[i:i+chunk_size])
-        time.sleep(0.001)
+    chunk_size = 512
+    total_len = len(raw_bytes)
+    sent_len = 0
+
+    for i in range(0, total_len, chunk_size):
+        chunk = raw_bytes[i:i+chunk_size]
+        ser.write(chunk)
+        sent_len += len(chunk)
+        percent = (sent_len / total_len) * 100
+        print(f"\r      Tien do: {sent_len:,}/{total_len:,} bytes ({percent:.1f}%)", end='', flush=True)
+        time.sleep(0.010)
 
     ser.flush()
+    print()
     elapsed = time.time() - start_time
     print(f"      Da gui xong trong {elapsed:.2f}s (Toc do: {len(raw_bytes)/elapsed/1024:.1f} KB/s)")
 
+    # Doi phan hoi ket qua
+    ser.timeout = 5
     result = ser.readline().decode('utf-8', errors='ignore')
-    print(f"      Ket qua: {result.strip()}")
+    if result.strip():
+        print(f"      Ket qua: {result.strip()}")
 
     ser.close()
-    print("[THANH CONG] Anh da duoc ve len man hinh F91 Standee!")
+    print("[THANH CONG] Anh da duoc ve len toan bo man hinh F91 Standee!")
 
 if __name__ == "__main__":
     main()
