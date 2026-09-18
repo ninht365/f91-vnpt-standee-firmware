@@ -116,10 +116,19 @@ static void stop_dns_server(void) {
     }
 }
 
-// Task to check internet connectivity asynchronously after getting IP
-static void internet_check_bg_task(void *pvParameters) {
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    wifi_manager_check_internet(NULL, 0);
+// Continuous Auto-Ping Loop Task (Automatically tests 1.1.1.1 & 8.8.8.8 in background)
+static TaskHandle_t auto_ping_task_handle = NULL;
+
+static void auto_ping_loop_task(void *pvParameters) {
+    ESP_LOGI(TAG, "Auto-Ping Continuous Health Checker started in background...");
+    vTaskDelay(pdMS_TO_TICKS(1500)); // Allow network stack and DHCP routing to settle
+
+    while (current_wifi_status == WIFI_MGR_STATUS_CONNECTED) {
+        wifi_manager_check_internet(NULL, 0);
+        vTaskDelay(pdMS_TO_TICKS(10000)); // Automatically test every 10 seconds!
+    }
+
+    auto_ping_task_handle = NULL;
     vTaskDelete(NULL);
 }
 
@@ -151,7 +160,15 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         retry_num = 0;
         current_wifi_status = WIFI_MGR_STATUS_CONNECTED;
 
-        xTaskCreate(internet_check_bg_task, "net_ping_task", 4096, NULL, 5, NULL);
+        // Route all outbound network packets (Sockets/Ping/DNS) through Station interface
+        if (sta_netif) {
+            esp_netif_set_default_netif(sta_netif);
+        }
+
+        // Start Auto-Ping continuous background monitor
+        if (!auto_ping_task_handle) {
+            xTaskCreate(auto_ping_loop_task, "auto_ping_task", 4096, NULL, 5, &auto_ping_task_handle);
+        }
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED) {
         wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
         ESP_LOGI(TAG, "Station "MACSTR" joined SoftAP, AID=%d", MAC2STR(event->mac), event->aid);
@@ -417,6 +434,10 @@ esp_err_t wifi_manager_ping(const char *target_ip, uint32_t *latency_ms) {
     ping_config.count = 2;
     ping_config.interval_ms = 400;
     ping_config.timeout_ms = 1000;
+    ping_config.task_stack_size = 4096;
+    if (sta_netif) {
+        ping_config.interface = esp_netif_get_netif_impl_index(sta_netif);
+    }
 
     esp_ping_callbacks_t cbs = {
         .cb_args = &ctx,

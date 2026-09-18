@@ -190,6 +190,20 @@ static esp_err_t get_scan_handler(httpd_req_t *req) {
     return res;
 }
 
+typedef struct {
+    char ssid[64];
+    char pass[64];
+} delayed_connect_params_t;
+
+static void delayed_connect_task(void *pvParameters) {
+    delayed_connect_params_t *params = (delayed_connect_params_t *)pvParameters;
+    vTaskDelay(pdMS_TO_TICKS(800)); // Allow HTTP response to be completely transmitted to the mobile client
+    ESP_LOGI(TAG, "Executing delayed connection to \"%s\"...", params->ssid);
+    wifi_manager_connect_sta(params->ssid, params->pass);
+    free(params);
+    vTaskDelete(NULL);
+}
+
 // POST /api/connect - Save credentials and connect
 static esp_err_t post_connect_handler(httpd_req_t *req) {
     char buf[512];
@@ -245,7 +259,18 @@ static esp_err_t post_connect_handler(httpd_req_t *req) {
 
     ESP_LOGI(TAG, "Web Portal received Wi-Fi credentials: SSID=\"%s\"", ssid);
     wifi_manager_save_credentials(ssid, pass);
-    wifi_manager_connect_sta(ssid, pass);
+
+    // Launch delayed connect task to avoid dropping TCP socket before HTTP 200 is delivered
+    delayed_connect_params_t *params = malloc(sizeof(delayed_connect_params_t));
+    if (params) {
+        strncpy(params->ssid, ssid, sizeof(params->ssid) - 1);
+        params->ssid[sizeof(params->ssid) - 1] = '\0';
+        strncpy(params->pass, pass, sizeof(params->pass) - 1);
+        params->pass[sizeof(params->pass) - 1] = '\0';
+        xTaskCreate(delayed_connect_task, "delayed_conn", 4096, params, 5, NULL);
+    } else {
+        wifi_manager_connect_sta(ssid, pass);
+    }
 
     const char *resp = "{\"status\":\"ok\",\"message\":\"Saved and connecting\"}";
     httpd_resp_set_type(req, "application/json");
