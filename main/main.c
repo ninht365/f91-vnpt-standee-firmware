@@ -106,21 +106,39 @@ static void lcd_write_data(uint8_t data) {
     gpio_set_level(PIN_LCD_CS, 1);
 }
 
-// Set address window
-static void lcd_set_window(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
-    lcd_write_cmd(0x2A);
-    lcd_write_data((x0 >> 8) & 0xFF);
-    lcd_write_data(x0 & 0xFF);
-    lcd_write_data((x1 >> 8) & 0xFF);
-    lcd_write_data(x1 & 0xFF);
+// Set address window and immediately begin RAM write transaction (CS stays LOW, DC switches to DATA)
+static void lcd_set_window_and_start_ramwr(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
+    gpio_set_level(PIN_LCD_CS, 0);
 
-    lcd_write_cmd(0x2B);
-    lcd_write_data((y0 >> 8) & 0xFF);
-    lcd_write_data(y0 & 0xFF);
-    lcd_write_data((y1 >> 8) & 0xFF);
-    lcd_write_data(y1 & 0xFF);
+    // 1. Column Address Set (0x2A)
+    gpio_set_level(PIN_LCD_DC, 0);
+    set_data_bus(0x2A);
+    gpio_set_level(PIN_LCD_WR, 0); esp_rom_delay_us(1); gpio_set_level(PIN_LCD_WR, 1);
+    
+    gpio_set_level(PIN_LCD_DC, 1);
+    set_data_bus((x0 >> 8) & 0xFF); gpio_set_level(PIN_LCD_WR, 0); esp_rom_delay_us(1); gpio_set_level(PIN_LCD_WR, 1);
+    set_data_bus(x0 & 0xFF);        gpio_set_level(PIN_LCD_WR, 0); esp_rom_delay_us(1); gpio_set_level(PIN_LCD_WR, 1);
+    set_data_bus((x1 >> 8) & 0xFF); gpio_set_level(PIN_LCD_WR, 0); esp_rom_delay_us(1); gpio_set_level(PIN_LCD_WR, 1);
+    set_data_bus(x1 & 0xFF);        gpio_set_level(PIN_LCD_WR, 0); esp_rom_delay_us(1); gpio_set_level(PIN_LCD_WR, 1);
 
-    lcd_write_cmd(0x2C);
+    // 2. Row Address Set (0x2B)
+    gpio_set_level(PIN_LCD_DC, 0);
+    set_data_bus(0x2B);
+    gpio_set_level(PIN_LCD_WR, 0); esp_rom_delay_us(1); gpio_set_level(PIN_LCD_WR, 1);
+    
+    gpio_set_level(PIN_LCD_DC, 1);
+    set_data_bus((y0 >> 8) & 0xFF); gpio_set_level(PIN_LCD_WR, 0); esp_rom_delay_us(1); gpio_set_level(PIN_LCD_WR, 1);
+    set_data_bus(y0 & 0xFF);        gpio_set_level(PIN_LCD_WR, 0); esp_rom_delay_us(1); gpio_set_level(PIN_LCD_WR, 1);
+    set_data_bus((y1 >> 8) & 0xFF); gpio_set_level(PIN_LCD_WR, 0); esp_rom_delay_us(1); gpio_set_level(PIN_LCD_WR, 1);
+    set_data_bus(y1 & 0xFF);        gpio_set_level(PIN_LCD_WR, 0); esp_rom_delay_us(1); gpio_set_level(PIN_LCD_WR, 1);
+
+    // 3. Memory Write Command (0x2C)
+    gpio_set_level(PIN_LCD_DC, 0);
+    set_data_bus(0x2C);
+    gpio_set_level(PIN_LCD_WR, 0); esp_rom_delay_us(1); gpio_set_level(PIN_LCD_WR, 1);
+
+    // Switch to DATA mode for continuous pixel streaming (CS is STILL 0!)
+    gpio_set_level(PIN_LCD_DC, 1);
 }
 
 // Fill rectangular area
@@ -131,9 +149,7 @@ static void lcd_fill_rect(int x, int y, int w, int h, uint16_t color) {
     if (y + h > LCD_H) h = LCD_H - y;
     if (w <= 0 || h <= 0) return;
 
-    lcd_set_window(x, y, x + w - 1, y + h - 1);
-    gpio_set_level(PIN_LCD_DC, 1);
-    gpio_set_level(PIN_LCD_CS, 0);
+    lcd_set_window_and_start_ramwr(x, y, x + w - 1, y + h - 1);
 
     uint8_t high = (color >> 8) & 0xFF;
     uint8_t low  = color & 0xFF;
@@ -164,9 +180,7 @@ static void lcd_draw_vnpt_logo(int x0, int y0) {
     int y1 = y0 + VNPT_LOGO_HEIGHT - 1;
     if (x0 < 0 || y0 < 0 || x1 >= LCD_W || y1 >= LCD_H) return;
 
-    lcd_set_window(x0, y0, x1, y1);
-    gpio_set_level(PIN_LCD_DC, 1);
-    gpio_set_level(PIN_LCD_CS, 0);
+    lcd_set_window_and_start_ramwr(x0, y0, x1, y1);
 
     for (int i = 0; i < VNPT_LOGO_WIDTH * VNPT_LOGO_HEIGHT; i++) {
         uint16_t color = vnpt_logo_center_pixels[i];
@@ -329,9 +343,7 @@ static void render_standby_screen(void) {
     qr_countdown_sec = 0;
 
     // Stream entire high-definition 240x320 image from Flash (.rodata)
-    lcd_set_window(0, 0, LCD_W - 1, LCD_H - 1);
-    gpio_set_level(PIN_LCD_DC, 1);
-    gpio_set_level(PIN_LCD_CS, 0);
+    lcd_set_window_and_start_ramwr(0, 0, LCD_W - 1, LCD_H - 1);
 
     for (int i = 0; i < LCD_W * LCD_H; i++) {
         uint16_t color = vnpt_bg_pixels[i];
@@ -568,9 +580,7 @@ static void process_at_command(const char *cmd) {
         raw_stream_bytes_received = 0;
 
         lcd_lock();
-        lcd_set_window(0, 0, LCD_W - 1, LCD_H - 1);
-        gpio_set_level(PIN_LCD_DC, 1);
-        gpio_set_level(PIN_LCD_CS, 0);
+        lcd_set_window_and_start_ramwr(0, 0, LCD_W - 1, LCD_H - 1);
         current_state = STATE_RAW_STREAM;
         qr_countdown_sec = 0;
 
