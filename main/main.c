@@ -13,7 +13,8 @@
 #include "vnpt_logo_center.h"
 #include "vnpt_bg_data.h"
 #include "wifi_manager.h"
-#include "web_portal.h"
+#include "web_server.h"
+#include "nvs_storage.h"
 
 static const char *TAG = "F91_VNPT_STANDEE";
 
@@ -648,7 +649,6 @@ static void process_at_command(const char *cmd) {
     if (strcmp(cmd, "AT+WIFICFG") == 0 || strcmp(cmd, "AT+WIFICONFIG") == 0) {
         char ap_ssid[32] = {0};
         wifi_manager_start_softap(ap_ssid, sizeof(ap_ssid));
-        web_portal_start();
         render_wifi_config_screen(ap_ssid, "http://192.168.4.1");
         printf("+WIFICFG: OK, SSID: %s, URL: http://192.168.4.1\r\nOK\r\n", ap_ssid);
         fflush(stdout);
@@ -657,20 +657,20 @@ static void process_at_command(const char *cmd) {
 
     // 8. AT+WIFISTATUS - Check Wi-Fi Status & IP
     if (strcmp(cmd, "AT+WIFISTATUS") == 0) {
-        wifi_mgr_status_t st = wifi_manager_get_status();
+        wifi_app_state_t st = wifi_manager_get_status();
         char ip[32] = {0};
         char ssid[64] = {0};
         char net_info[128] = {0};
-        wifi_manager_get_ip(ip, sizeof(ip));
-        wifi_manager_get_current_ssid(ssid, sizeof(ssid));
+        wifi_manager_get_sta_ip(ip, sizeof(ip));
+        wifi_manager_get_connected_ssid(ssid, sizeof(ssid));
         wifi_manager_get_internet_info(net_info, sizeof(net_info));
         int8_t rssi = wifi_manager_get_rssi();
 
         const char *st_str = "IDLE";
-        if (st == WIFI_MGR_STATUS_CONNECTED) st_str = "CONNECTED";
-        else if (st == WIFI_MGR_STATUS_CONNECTING) st_str = "CONNECTING";
-        else if (st == WIFI_MGR_STATUS_FAILED) st_str = "FAILED";
-        else if (st == WIFI_MGR_STATUS_AP_ACTIVE) st_str = "AP_ACTIVE";
+        if (st == WIFI_APP_STATE_ONLINE) st_str = "ONLINE";
+        else if (st == WIFI_APP_STATE_STA_CONNECTING) st_str = "CONNECTING";
+        else if (st == WIFI_APP_STATE_STA_FAIL) st_str = "FAILED";
+        else if (st == WIFI_APP_STATE_AP_MODE) st_str = "AP_ACTIVE";
 
         printf("+WIFISTATUS: %s, IP: %s, SSID: \"%s\", RSSI: %d dBm, INTERNET: %s\r\nOK\r\n",
                st_str, ip, ssid, (int)rssi, net_info);
@@ -727,31 +727,6 @@ static void process_at_command(const char *cmd) {
         return;
     }
 
-    // 9. AT+WIFISCAN - Scan available Wi-Fi networks
-    if (strcmp(cmd, "AT+WIFISCAN") == 0) {
-        uint16_t ap_count = 15;
-        wifi_ap_record_t *ap_records = malloc(sizeof(wifi_ap_record_t) * ap_count);
-        if (ap_records) {
-            esp_err_t ret = wifi_manager_scan_networks(ap_records, &ap_count);
-            if (ret == ESP_OK) {
-                printf("+WIFISCAN: %d networks found\r\n", (int)ap_count);
-                for (int i = 0; i < ap_count; i++) {
-                    if (strlen((char*)ap_records[i].ssid) == 0) continue;
-                    printf("  [%d] SSID: \"%s\", RSSI: %d dBm, Auth: %d\r\n",
-                           i + 1, (char*)ap_records[i].ssid, ap_records[i].rssi, ap_records[i].authmode);
-                }
-                printf("OK\r\n");
-            } else {
-                printf("+WIFISCAN: ERROR\r\n");
-            }
-            free(ap_records);
-        } else {
-            printf("+WIFISCAN: ERROR (OUT OF MEMORY)\r\n");
-        }
-        fflush(stdout);
-        return;
-    }
-
     // 10. AT+WIFICONN="<ssid>","<pass>" - Connect to Wi-Fi directly
     if (strncmp(cmd, "AT+WIFICONN=", 12) == 0) {
         const char *p = cmd + 12;
@@ -789,8 +764,8 @@ static void process_at_command(const char *cmd) {
         }
 
         if (strlen(ssid) > 0) {
-            wifi_manager_save_credentials(ssid, pass);
-            wifi_manager_connect_sta(ssid, pass);
+            nvs_storage_save_wifi_credentials(ssid, pass);
+            wifi_manager_connect(ssid, pass);
             printf("+WIFICONN: CONNECTING TO \"%s\"...\r\nOK\r\n", ssid);
         } else {
             printf("+WIFICONN: ERROR (INVALID SYNTAX: AT+WIFICONN=\"SSID\",\"PASS\")\r\n");
@@ -801,7 +776,7 @@ static void process_at_command(const char *cmd) {
 
     // 11. AT+WIFIRESET - Erase saved Wi-Fi credentials
     if (strcmp(cmd, "AT+WIFIRESET") == 0) {
-        wifi_manager_erase_credentials();
+        nvs_storage_erase_wifi_credentials();
         wifi_manager_stop_softap();
         printf("+WIFIRESET: OK\r\nOK\r\n");
         fflush(stdout);
@@ -1003,13 +978,11 @@ void app_main(void) {
     wifi_manager_init();
     wifi_manager_set_ap_exit_callback(on_wifi_ap_exit_event);
 
-    char saved_ssid[64] = {0};
-    char saved_pass[64] = {0};
-    if (wifi_manager_load_credentials(saved_ssid, sizeof(saved_ssid), saved_pass, sizeof(saved_pass))) {
-        ESP_LOGI(TAG, "Found saved Wi-Fi: \"%s\". Auto-connecting in background...", saved_ssid);
-        wifi_manager_connect_sta(saved_ssid, saved_pass);
+    wifi_credentials_t saved;
+    if (nvs_storage_load_wifi_credentials(&saved) == ESP_OK && strlen(saved.ssid) > 0) {
+        ESP_LOGI(TAG, "Found saved Wi-Fi: \"%s\". Auto-connecting in background...", saved.ssid);
     } else {
-        ESP_LOGI(TAG, "No saved Wi-Fi credentials. Ready for Web Portal or AT+WIFICONN.");
+        ESP_LOGI(TAG, "No saved Wi-Fi credentials. Ready for Web Portal (AT+WIFICFG) or AT+WIFICONN.");
     }
 
     // 8. Create FreeRTOS Tasks

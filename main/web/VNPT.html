@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Cau hinh Wi-Fi VNPT</title>
+
+  <style>
+    :root {
+      --brand: #4a93f6;
+      --brand-2: #66aafe;
+      --text: #333;
+      --white: #fff;
+      --muted: #64748b;
+      --radius: 14px;
+    }
+
+    * {
+      box-sizing: border-box;
+      outline: 0 !important;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 18px;
+      background: var(--brand);
+      color: var(--white);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font: 500 16px Arial, sans-serif;
+    }
+
+    .container {
+      width: 92%;
+      max-width: 1000px;
+      display: flex;
+      align-items: stretch;
+      justify-content: space-between;
+      gap: 28px;
+    }
+
+    .left {
+      flex: 1;
+      padding: 40px 10px 40px 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .left h1 {
+      margin: 0 0 16px;
+      font-size: 38px;
+      line-height: 1.2;
+      font-weight: 800;
+    }
+
+    .left p {
+      margin: 0;
+      font-size: 30px;
+      font-weight: 700;
+      opacity: 0.92;
+    }
+
+    .right {
+      flex: 1.2;
+      padding: 24px 28px 38px;
+      background: var(--white);
+      border-radius: var(--radius);
+      color: var(--text);
+      box-shadow: 0 10px 30px #0002;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .right h2 {
+      margin: 4px 0 10px;
+      color: #111827;
+      font-size: 38px;
+      line-height: 1.15;
+      text-align: center;
+    }
+
+    .subtitle {
+      display: block;
+      margin-bottom: 18px;
+      color: #666;
+      font-size: 16px;
+      text-align: center;
+    }
+
+    .form {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .form-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .fg,
+    .form-group {
+      width: 100%;
+      margin: 0;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #555;
+      font-weight: 700;
+    }
+
+    input {
+      width: 100%;
+      padding: 20px;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      background: #fff;
+      color: #000;
+      font: 500 16px Arial, sans-serif;
+    }
+
+    input:focus {
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(74, 147, 246, 0.15);
+    }
+
+    button {
+      font: 700 16px Arial, sans-serif;
+    }
+
+    .btn-primary,
+    #submit-btn {
+      width: 60%;
+      max-width: 320px;
+      margin: 6px auto 0;
+      padding: 12px 18px;
+      border: 0;
+      border-radius: 10px;
+      background: var(--brand);
+      color: var(--white);
+      cursor: pointer;
+      display: block;
+      font-weight: 800;
+    }
+
+    .btn-primary:hover,
+    #submit-btn:hover {
+      opacity: 0.92;
+    }
+
+    .btn-primary:disabled,
+    #submit-btn:disabled {
+      background: #b7c6dc;
+      cursor: no-drop;
+    }
+
+    .rb {
+      width: auto;
+      margin: 0;
+      padding: 12px 16px;
+      border: 1px solid #c7d2fe;
+      border-radius: 10px;
+      background: #eef2ff;
+      color: #1e293b;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .rb:hover {
+      background: #e0e7ff;
+      color: #1e293b;
+    }
+
+    .ri {
+      margin-right: 5px;
+      display: flex;
+      align-items: center;
+    }
+
+    .wl {
+      max-height: 220px;
+      margin: 0;
+      overflow-y: auto;
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .wi {
+      padding: 12px 15px;
+      border-bottom: 1px solid #e0e0e0;
+      background: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .wi:last-child {
+      border-bottom: 0;
+    }
+
+    .wi:hover {
+      background: #f8fafc;
+    }
+
+    .wn {
+      flex-grow: 1;
+      color: #333;
+      font-size: 15px;
+      font-weight: 700;
+      word-break: break-all;
+    }
+
+    .wf {
+      height: 16px;
+      margin-right: -5px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .li {
+      width: 14px;
+      height: 16px;
+      margin-left: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .rv {
+      min-width: 55px;
+      height: 16px;
+      color: #666;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      font-size: 13px;
+      line-height: 16px;
+      text-align: right;
+    }
+
+    .sb {
+      width: 20px;
+      height: 16px;
+      margin-left: 4px;
+      margin-bottom: 1px;
+      display: inline-flex;
+      align-items: flex-end;
+      gap: 1px;
+    }
+
+    .sb .bar {
+      width: 4px;
+      background: #ddd;
+      border-radius: 1px;
+    }
+
+    .sb .bar.active {
+      background: #666;
+    }
+
+    .sb .bar:nth-child(1) { height: 4px; }
+    .sb .bar:nth-child(2) { height: 7px; }
+    .sb .bar:nth-child(3) { height: 10px; }
+    .sb .bar:nth-child(4) { height: 13px; }
+
+    #status {
+      min-height: 24px;
+      margin: 18px 0 4px;
+      padding: 12px;
+      border-radius: 8px;
+      background: 0;
+      color: #0f172a;
+      display: none;
+      font-size: 18px;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    #status.show {
+      display: block;
+    }
+
+    .success { color: #155724; }
+    .error { color: #000; font-size: 18px; }
+    .loading { color: #383d41; }
+
+    .note {
+      margin-top: 12px;
+      color: #475569;
+      font-size: 18px;
+      line-height: 1.45;
+    }
+
+    .device-qr-card {
+      width: 320px;
+      margin: 34px 0 0;
+      padding: 18px;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      background: #f8fafc;
+      color: #0f172a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .device-qr-box {
+      width: 270px;
+      height: 270px;
+      padding: 10px;
+      background: #fff;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .device-qr-box .qr-svg {
+      width: 250px;
+      height: 250px;
+      display: block;
+    }
+
+    .device-qr-title {
+      margin-top: 10px;
+      color: #0f172a;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .device-qr-id {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+      word-break: break-all;
+    }
+
+    .ti {
+      color: red;
+    }
+
+    .msg {
+      position: fixed;
+      inset: 0;
+      background: #0002;
+      z-index: 10;
+    }
+
+    .msg .ct {
+      width: 80%;
+      max-width: 320px;
+      padding: 10px 18px;
+      border-radius: 16px;
+      background: #0009;
+      color: #fff;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .footer {
+      position: fixed;
+      right: 10px;
+      bottom: 10px;
+      color: #333;
+      font-size: 12px;
+      font-weight: 400;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        align-items: flex-start;
+      }
+
+      .container {
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .right {
+        order: -1;
+      }
+
+      .left {
+        padding: 10px 0 28px;
+      }
+
+      .left h1 {
+        font-size: 30px;
+      }
+
+      .left p {
+        font-size: 22px;
+      }
+
+      .device-qr-card {
+        margin: 24px auto 0;
+      }
+
+      .right h2 {
+        font-size: 28px;
+      }
+
+      .form-row {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .rb,
+      #submit-btn {
+        width: 100%;
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+
+<body id="body-wrap">
+  <div class="container">
+    <div class="left">
+      <h1></h1>
+      <p>Mã QR liên kết</p>
+
+      <div class="device-qr-card">
+        <div class="device-qr-box">__DEVICE_QR_SVG__</div>
+        <!-- <div class="device-qr-title">SOUND_BOX_PHYSICAL</div> -->
+        <!-- <div class="device-qr-id">__DEVICE_QR_TEXT__</div> -->
+      </div>
+    </div>
+
+    <div class="right">
+      <h2>Cấu hình mạng Wi-Fi cho Loa Tingpay</h2>
+      <span class="subtitle"></span>
+
+      <section class="form">
+        <div class="form-row">
+          <div class="form-group" style="flex:1">
+            <input
+              id="ssid"
+              name="ssid"
+              maxlength="32"
+              type="text"
+              placeholder="Tên Wi-Fi (SSID)"
+              required
+            >
+          </div>
+
+          <button class="rb" onclick="scanWiFi()" type="button">
+            <span class="ri">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  stroke="#1e293b"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </span>
+            Quét Wi-Fi
+          </button>
+        </div>
+
+        <div id="wl" class="wl"></div>
+
+        <form id="wifi-form" class="form">
+          <div class="fg">
+            <label for="password">Mật khẩu Wi-Fi:</label>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              maxlength="64"
+              placeholder="Mật khẩu Wi-Fi"
+            >
+          </div>
+
+          <button id="submit-btn" type="submit">Kết nối</button>
+        </form>
+
+        <div id="status"></div>
+        <div class="note">
+          <b>Lưu ý:</b> Nếu chọn kết nối tới điểm phát Wi-Fi (hotspot) do thiết bị phát ra trong khi vẫn mở trang cấu hình này, bạn có thể không nhận được thông báo về kết quả kết nối Wi-Fi.
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="footer">VNPT</div>
+
+  <script>
+    let isConfiguring = false;
+
+    function $(id) {
+      return document.getElementById(id);
+    }
+
+    function showStatus(message, type) {
+      const status = $('status');
+      status.textContent = message;
+      status.className = type + ' show';
+    }
+
+    function getSignalBars(rssi) {
+      let count = 0;
+
+      if (rssi >= -55) {
+        count = 4;
+      } else if (rssi >= -66) {
+        count = 3;
+      } else if (rssi >= -77) {
+        count = 2;
+      } else if (rssi >= -88) {
+        count = 1;
+      }
+
+      return (
+        '<span class="sb">' +
+        '<span class="bar ' + (count >= 1 ? 'active' : '') + '"></span>' +
+        '<span class="bar ' + (count >= 2 ? 'active' : '') + '"></span>' +
+        '<span class="bar ' + (count >= 3 ? 'active' : '') + '"></span>' +
+        '<span class="bar ' + (count >= 4 ? 'active' : '') + '"></span>' +
+        '</span>'
+      );
+    }
+
+    function getLockIcon(authMode) {
+      if (!authMode || authMode === 0) {
+        return '';
+      }
+
+      return (
+        '<span class="li">' +
+        '<svg width="14px" height="14px" viewBox="0 0 1024 1024">' +
+        '<path d="M800.421 436.525H736.76V287.852c0-124.507-100.762-225.757-224.732-225.757-123.98 0-224.857 101.25-224.857 225.766v148.662h-63.593c-30.667 0-55.532 24.952-55.532 55.752v407.048c0 30.848 24.865 55.82 55.532 55.82h576.9c30.667 0 55.465-24.97 55.465-55.82V492.275c0-30.802-24.855-55.752-55.532-55.752zM543.203 706.409v88.88a7.354 7.354 0 0 1-7.282 7.325h-47.733a7.373 7.373 0 0 1-7.334-7.322V706.41c-22.423-11.518-37.953-34.602-37.953-61.659 0-38.288 30.945-69.425 69.07-69.425 38.183 0 69.138 31.136 69.138 69.415 0.057 27.067-15.473 50.152-37.905 61.659z m107.311-269.884H373.525V291.539c0-76.691 62.196-139.146 138.552-139.146 76.366 0 138.447 62.454 138.447 139.146v144.986z" fill="#999"/>' +
+        '</svg>' +
+        '</span>'
+      );
+    }
+
+    async function scanWiFi() {
+      const wifiListWrap = $('wl');
+
+      try {
+        wifiListWrap.innerHTML = '<div style="text-align:center;padding:12px;color:#333">Scanning...</div>';
+
+        const response = await fetch('getaprecord');
+        if (!response.ok) {
+          throw Error(response.status);
+        }
+
+        const data = await response.json();
+        if (data.status === 'error') {
+          showStatus(data.message || 'Scan Failed', 'error');
+          return;
+        }
+
+        wifiListWrap.innerHTML = '';
+
+        const seen = {};
+        const apList = (data.aplist || [])
+          .filter(item => item.ssid)
+          .sort((a, b) => b.rssi - a.rssi)
+          .filter(item => (seen[item.ssid] ? 0 : (seen[item.ssid] = 1)));
+
+        if (!apList.length) {
+          wifiListWrap.innerHTML = '<div style="text-align:center;padding:12px;color:#333">No WiFi network found</div>';
+          return;
+        }
+
+        apList.forEach(item => {
+          const row = document.createElement('div');
+          row.className = 'wi';
+          row.innerHTML =
+            '<span class="wn"></span>' +
+            '<span class="wf">' +
+            getLockIcon(item.auth_mode) +
+            getSignalBars(item.rssi) +
+            '<span class="rv">' + item.rssi + 'dBm</span>' +
+            '</span>';
+
+          row.children[0].textContent = item.ssid;
+          row.onclick = () => {
+            $('ssid').value = item.ssid;
+            $('password').focus();
+          };
+
+          wifiListWrap.appendChild(row);
+        });
+      } catch (error) {
+        showStatus('Quét Wi-Fi không thành công: ' + error.message, 'error');
+        wifiListWrap.innerHTML = '<div style="text-align:center;color:red;padding:12px">Quét không thành công</div>';
+      }
+    }
+
+    $('wifi-form').addEventListener('submit', async event => {
+      event.preventDefault();
+
+      if (isConfiguring) {
+        return;
+      }
+
+      const submitButton = $('submit-btn');
+      const ssid = $('ssid').value;
+      const password = $('password').value;
+
+      try {
+        isConfiguring = true;
+        submitButton.disabled = true;
+        showStatus('Cấu hình Wi-Fi...', 'Loading');
+
+        const response = await fetch('setstainfo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ssid_len: ssid.length,
+            ssid: ssid,
+            password_len: password.length,
+            password: password
+          })
+        });
+
+        if (!response.ok) {
+          throw Error('Cấu hình không thành công');
+        }
+
+        showStatus(
+          'Vui lòng chờ thiết bị phản hồi thông báo cấu hình, nếu không thành công hãy thử lại !',
+          'Loading'
+        );
+
+        setTimeout(() => {
+          let retryCount = 0;
+          const timer = setInterval(async () => {
+            try {
+              const status = await (await fetch('getstainfo')).json();
+
+              if (status.state === 1 || status.state === 2) {
+                clearInterval(timer);
+                if (status.state === 1) {
+                  showTimeout();
+                }
+              } else if (++retryCount >= 18) {
+                clearInterval(timer);
+                showStatus('Thao tác quá thời gian, vui lòng thử lại!', 'error');
+              }
+            } catch (error) {
+              clearInterval(timer);
+            }
+          }, 2000);
+        }, 3000);
+      } catch (error) {
+        showStatus('Cấu hình không thành công: ' + error.message, 'error');
+      } finally {
+        isConfiguring = false;
+        submitButton.disabled = false;
+      }
+    });
+
+    function showTimeout() {
+      const body = $('body-wrap');
+      const mask = document.createElement('div');
+      mask.className = 'msg';
+      mask.innerHTML =
+        '<div class="ct">Kết nối thành công. Trang này sẽ đóng trong vòng ' +
+        '<span id="ti" class="ti">5</span> giây</div>';
+
+      body.appendChild(mask);
+
+      let seconds = 5;
+      const timer = setInterval(() => {
+        $('ti').textContent = --seconds;
+
+        if (seconds < 0) {
+          body.removeChild(mask);
+          closeWindow();
+          clearInterval(timer);
+        }
+      }, 1000);
+    }
+
+    function closeWindow() {
+      location.href = 'about:blank';
+
+      setTimeout(() => {
+        try {
+          window.close();
+        } catch (error) {
+          document.body.innerHTML = '';
+        }
+      }, 100);
+    }
+
+    window.addEventListener('load', scanWiFi);
+  </script>
+</body>
+</html>
