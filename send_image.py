@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 import os
 import time
 import struct
@@ -62,9 +62,18 @@ def main():
         print(f"[ERROR] File anh khong ton tai: {args.image}")
         sys.exit(1)
 
-    print(f"[1/3] Dang doc va chuyen doi anh: {args.image} -> 240x320 RGB565...")
-    raw_bytes = convert_image_to_rgb565(args.image)
-    print(f"      Dung luong byte anh tho: {len(raw_bytes):,} bytes (Chuan 153.600 bytes)")
+    if args.image.lower().endswith(".bin") or os.path.getsize(args.image) == TOTAL_BYTES:
+        print(f"[1/3] Dang doc truc tiep file binary: {args.image}...")
+        with open(args.image, "rb") as f:
+            raw_bytes = f.read()
+        print(f"      Dung luong byte anh tho: {len(raw_bytes):,} bytes")
+    else:
+        print(f"[1/3] Dang doc va chuyen doi anh: {args.image} -> 240x320 RGB565...")
+        raw_bytes = convert_image_to_rgb565(args.image)
+        print(f"      Dung luong byte anh tho: {len(raw_bytes):,} bytes (Chuan 153.600 bytes)")
+
+    if len(raw_bytes) != TOTAL_BYTES:
+        print(f"[WARNING] Kich thuoc du lieu la {len(raw_bytes)} bytes (Yeu cau chuan: 153.600 bytes)!")
 
     if args.save_bin:
         with open(args.save_bin, "wb") as f:
