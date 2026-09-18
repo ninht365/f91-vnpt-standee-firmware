@@ -1,4 +1,5 @@
 #include "wifi_manager.h"
+#include "web_portal.h"
 #include <string.h>
 #include <stdio.h>
 #include <sys/socket.h>
@@ -33,6 +34,7 @@ static char current_sta_ip[32] = "0.0.0.0";
 static char current_sta_ssid[64] = {0};
 static int retry_num = 0;
 static bool wifi_initialized = false;
+static wifi_ap_exit_callback_t s_ap_exit_cb = NULL;
 
 // DNS Captive Portal Server context
 static TaskHandle_t dns_task_handle = NULL;
@@ -116,19 +118,44 @@ static void stop_dns_server(void) {
     }
 }
 
-// Continuous Auto-Ping Loop Task (Automatically tests 1.1.1.1 & 8.8.8.8 in background)
-static TaskHandle_t auto_ping_task_handle = NULL;
+void wifi_manager_set_ap_exit_callback(wifi_ap_exit_callback_t cb) {
+    s_ap_exit_cb = cb;
+}
 
-static void auto_ping_loop_task(void *pvParameters) {
-    ESP_LOGI(TAG, "Auto-Ping Continuous Health Checker started in background...");
-    vTaskDelay(pdMS_TO_TICKS(1500)); // Allow network stack and DHCP routing to settle
+// Single-Run Internet Health Check Task (Dual ping 3 packets, auto-exits SoftAP after 5s if online)
+static TaskHandle_t internet_check_task_handle = NULL;
 
-    while (current_wifi_status == WIFI_MGR_STATUS_CONNECTED) {
-        wifi_manager_check_internet(NULL, 0);
-        vTaskDelay(pdMS_TO_TICKS(10000)); // Automatically test every 10 seconds!
+static void internet_check_task(void *pvParameters) {
+    ESP_LOGI(TAG, "Internet Check Task started (Primary 1.1.1.1 -> Fallback 8.8.8.8, 3 packets each)...");
+    vTaskDelay(pdMS_TO_TICKS(1500)); // Allow DHCP gateway and TCP/IP stack to settle
+
+    bool online = wifi_manager_check_internet(NULL, 0);
+
+    // If online and SoftAP is currently active, wait 5 seconds for web client to receive status, then shut down SoftAP and switch to pure STA
+    if (online) {
+        wifi_mode_t mode;
+        if (esp_wifi_get_mode(&mode) == ESP_OK && (mode & WIFI_MODE_AP)) {
+            ESP_LOGI(TAG, "Internet verified OK! Waiting 5s for Web Portal client before stopping SoftAP...");
+            vTaskDelay(pdMS_TO_TICKS(5000));
+            wifi_manager_stop_softap();
+        }
+    } else {
+        // If not online, retry after 30 seconds (matching wifi_demo)
+        ESP_LOGW(TAG, "Internet check failed. Will retry in 30 seconds...");
+        vTaskDelay(pdMS_TO_TICKS(30000));
+        if (current_wifi_status == WIFI_MGR_STATUS_CONNECTED) {
+            online = wifi_manager_check_internet(NULL, 0);
+            if (online) {
+                wifi_mode_t mode;
+                if (esp_wifi_get_mode(&mode) == ESP_OK && (mode & WIFI_MODE_AP)) {
+                    vTaskDelay(pdMS_TO_TICKS(5000));
+                    wifi_manager_stop_softap();
+                }
+            }
+        }
     }
 
-    auto_ping_task_handle = NULL;
+    internet_check_task_handle = NULL;
     vTaskDelete(NULL);
 }
 
@@ -165,9 +192,9 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
             esp_netif_set_default_netif(sta_netif);
         }
 
-        // Start Auto-Ping continuous background monitor
-        if (!auto_ping_task_handle) {
-            xTaskCreate(auto_ping_loop_task, "auto_ping_task", 4096, NULL, 5, &auto_ping_task_handle);
+        // Start Internet Health Check task
+        if (!internet_check_task_handle) {
+            xTaskCreate(internet_check_task, "inet_chk_task", 4096, NULL, 5, &internet_check_task_handle);
         }
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED) {
         wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
@@ -355,11 +382,21 @@ esp_err_t wifi_manager_start_softap(char *out_ap_ssid, size_t max_len) {
 
 esp_err_t wifi_manager_stop_softap(void) {
     stop_dns_server();
+    web_portal_stop();
+
     wifi_mode_t mode;
     esp_wifi_get_mode(&mode);
     if (mode == WIFI_MODE_APSTA || mode == WIFI_MODE_AP) {
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-        ESP_LOGI(TAG, "SoftAP stopped. Switched back to pure STA mode.");
+        ESP_LOGI(TAG, "SoftAP & Web Portal stopped. Switched back to pure STA mode.");
+    }
+
+    if (current_wifi_status == WIFI_MGR_STATUS_AP_ACTIVE) {
+        current_wifi_status = WIFI_MGR_STATUS_CONNECTED;
+    }
+
+    if (s_ap_exit_cb) {
+        s_ap_exit_cb();
     }
     return ESP_OK;
 }
@@ -431,9 +468,9 @@ esp_err_t wifi_manager_ping(const char *target_ip, uint32_t *latency_ms) {
 
     esp_ping_config_t ping_config = ESP_PING_DEFAULT_CONFIG();
     ping_config.target_addr = target_addr;
-    ping_config.count = 2;
-    ping_config.interval_ms = 400;
-    ping_config.timeout_ms = 1000;
+    ping_config.count = 3;             // Exactly 3 ping attempts
+    ping_config.interval_ms = 1000;    // 1s interval
+    ping_config.timeout_ms = 2000;     // 2s timeout per packet
     ping_config.task_stack_size = 4096;
     if (sta_netif) {
         ping_config.interface = esp_netif_get_netif_impl_index(sta_netif);
@@ -454,7 +491,7 @@ esp_err_t wifi_manager_ping(const char *target_ip, uint32_t *latency_ms) {
     }
 
     esp_ping_start(ping_handle);
-    xSemaphoreTake(ctx.sem, pdMS_TO_TICKS(2500));
+    xSemaphoreTake(ctx.sem, pdMS_TO_TICKS(6500));
     esp_ping_stop(ping_handle);
     esp_ping_delete_session(ping_handle);
     vSemaphoreDelete(ctx.sem);
@@ -470,7 +507,7 @@ bool wifi_manager_check_internet(char *out_info, size_t max_len) {
     current_internet_status = INTERNET_CHECKING;
     uint32_t latency = 0;
 
-    ESP_LOGI(TAG, "Testing Internet via Primary: %s...", PRIMARY_PING_TARGET);
+    ESP_LOGI(TAG, "Testing Internet via Primary: %s (3 attempts)...", PRIMARY_PING_TARGET);
     esp_err_t err = wifi_manager_ping(PRIMARY_PING_TARGET, &latency);
     if (err == ESP_OK) {
         current_internet_status = INTERNET_ONLINE;
@@ -484,7 +521,7 @@ bool wifi_manager_check_internet(char *out_info, size_t max_len) {
         return true;
     }
 
-    ESP_LOGW(TAG, "Primary 1.1.1.1 failed. Testing Backup: %s...", BACKUP_PING_TARGET);
+    ESP_LOGW(TAG, "Primary 1.1.1.1 failed (3/3 timeout). Testing Backup: %s (3 attempts)...", BACKUP_PING_TARGET);
     err = wifi_manager_ping(BACKUP_PING_TARGET, &latency);
     if (err == ESP_OK) {
         current_internet_status = INTERNET_ONLINE;
@@ -500,7 +537,7 @@ bool wifi_manager_check_internet(char *out_info, size_t max_len) {
 
     current_internet_status = INTERNET_OFFLINE;
     snprintf(current_internet_info, sizeof(current_internet_info), "OFFLINE (No Internet)");
-    ESP_LOGE(TAG, "Internet Check FAILED: Both 1.1.1.1 and 8.8.8.8 unreachable!");
+    ESP_LOGE(TAG, "Internet Check FAILED: Both 1.1.1.1 and 8.8.8.8 unreachable (0/6 packets)!");
     if (out_info && max_len > 0) {
         strncpy(out_info, current_internet_info, max_len - 1);
         out_info[max_len - 1] = '\0';

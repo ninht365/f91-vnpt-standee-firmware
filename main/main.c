@@ -927,6 +927,13 @@ static void timer_task(void *pvParameters) {
     }
 }
 
+static void on_wifi_ap_exit_event(void) {
+    ESP_LOGI(TAG, "SoftAP stopped -> Restoring HD Standby Screen on LCD...");
+    if (current_state == STATE_WIFI_CONFIG) {
+        render_standby_screen();
+    }
+}
+
 void app_main(void) {
     setvbuf(stdin, NULL, _IONBF, 0);
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -994,6 +1001,8 @@ void app_main(void) {
 
     // 7. Initialize Wi-Fi Manager & NVS Storage
     wifi_manager_init();
+    wifi_manager_set_ap_exit_callback(on_wifi_ap_exit_event);
+
     char saved_ssid[64] = {0};
     char saved_pass[64] = {0};
     if (wifi_manager_load_credentials(saved_ssid, sizeof(saved_ssid), saved_pass, sizeof(saved_pass))) {

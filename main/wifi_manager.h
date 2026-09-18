@@ -1,4 +1,4 @@
-﻿#ifndef WIFI_MANAGER_H
+#ifndef WIFI_MANAGER_H
 #define WIFI_MANAGER_H
 
 #include <stdbool.h>
@@ -54,6 +54,10 @@ wifi_mgr_status_t wifi_manager_get_status(void);
 void wifi_manager_get_ip(char *ip_str, size_t max_len);
 void wifi_manager_get_current_ssid(char *ssid_str, size_t max_len);
 int8_t wifi_manager_get_rssi(void);
+
+// Callbacks
+typedef void (*wifi_ap_exit_callback_t)(void);
+void wifi_manager_set_ap_exit_callback(wifi_ap_exit_callback_t cb);
 
 #ifdef __cplusplus
 }
