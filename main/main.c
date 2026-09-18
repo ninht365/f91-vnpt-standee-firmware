@@ -660,8 +660,10 @@ static void process_at_command(const char *cmd) {
         wifi_mgr_status_t st = wifi_manager_get_status();
         char ip[32] = {0};
         char ssid[64] = {0};
+        char net_info[128] = {0};
         wifi_manager_get_ip(ip, sizeof(ip));
         wifi_manager_get_current_ssid(ssid, sizeof(ssid));
+        wifi_manager_get_internet_info(net_info, sizeof(net_info));
         int8_t rssi = wifi_manager_get_rssi();
 
         const char *st_str = "IDLE";
@@ -670,7 +672,57 @@ static void process_at_command(const char *cmd) {
         else if (st == WIFI_MGR_STATUS_FAILED) st_str = "FAILED";
         else if (st == WIFI_MGR_STATUS_AP_ACTIVE) st_str = "AP_ACTIVE";
 
-        printf("+WIFISTATUS: %s, IP: %s, SSID: %s, RSSI: %d dBm\r\nOK\r\n", st_str, ip, ssid, (int)rssi);
+        printf("+WIFISTATUS: %s, IP: %s, SSID: \"%s\", RSSI: %d dBm, INTERNET: %s\r\nOK\r\n",
+               st_str, ip, ssid, (int)rssi, net_info);
+        fflush(stdout);
+        return;
+    }
+
+    // 9. AT+PING / AT+PING="<target_ip>" - Check Internet connectivity (Primary 1.1.1.1 / Backup 8.8.8.8)
+    if (strncmp(cmd, "AT+PING", 7) == 0) {
+        const char *p = cmd + 7;
+        while (*p == ' ' || *p == '\t') p++;
+
+        if (*p == '=' || *p == ':') {
+            p++;
+            while (*p == ' ' || *p == '\t') p++;
+            char target[64] = {0};
+            if (*p == '"') {
+                p++;
+                const char *q = strchr(p, '"');
+                if (q) {
+                    size_t tlen = q - p;
+                    if (tlen >= sizeof(target)) tlen = sizeof(target) - 1;
+                    strncpy(target, p, tlen);
+                }
+            } else {
+                strncpy(target, p, sizeof(target) - 1);
+            }
+
+            if (strlen(target) > 0) {
+                printf("+PING: Pinging \"%s\"...\r\n", target);
+                fflush(stdout);
+                uint32_t lat = 0;
+                esp_err_t err = wifi_manager_ping(target, &lat);
+                if (err == ESP_OK) {
+                    printf("+PING: SUCCESS, Target: %s, Latency: %u ms\r\nOK\r\n", target, (unsigned int)lat);
+                } else {
+                    printf("+PING: TIMEOUT / UNREACHABLE (%s)\r\nERROR\r\n", target);
+                }
+                fflush(stdout);
+                return;
+            }
+        }
+
+        printf("+PING: Checking Internet (Primary: %s, Backup: %s)...\r\n", PRIMARY_PING_TARGET, BACKUP_PING_TARGET);
+        fflush(stdout);
+        char net_result[128] = {0};
+        bool ok = wifi_manager_check_internet(net_result, sizeof(net_result));
+        if (ok) {
+            printf("+PING: %s\r\nOK\r\n", net_result);
+        } else {
+            printf("+PING: %s\r\nERROR\r\n", net_result);
+        }
         fflush(stdout);
         return;
     }

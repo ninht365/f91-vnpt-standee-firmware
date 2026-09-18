@@ -30,10 +30,11 @@ Mọi lệnh AT được gửi qua cổng **USB Serial CDC (Baudrate: 115200, k�
 | **8** | **`AT+DTIME=0`** | `AT+DTIME=0` | **Chuyển sang chế độ nhận luồng ảnh thô 153.600 bytes** ($240 \times 320$ RGB565) hiển thị vĩnh viễn trên LCD. | `OK`<br>*(Sau khi nhận đủ 150KB: `+DTIME: OK`)* |
 | **9** | **`AT+DTIME=<sec>`** | `AT+DTIME=30` | **Nhận luồng ảnh thô 153.600 bytes** kèm thời gian đếm lùi `<sec>` giây trước khi tự động về màn hình chờ. | `OK`<br>*(Sau khi nhận đủ 150KB: `+DTIME: OK`)* |
 | **10** | **`AT+WIFICFG`** | `AT+WIFICFG` | **Kích hoạt SoftAP Web Portal** (`VNPT_F91_XXXX`) và hiển thị mã QR `http://192.168.4.1` lên LCD để cấu hình bằng điện thoại. | `+WIFICFG: OK, SSID: ...`<br>`OK` |
-| **11** | **`AT+WIFISTATUS`** | `AT+WIFISTATUS` | **Xem trạng thái Wi-Fi hiện tại**, địa chỉ IP được cấp, SSID và cường độ sóng RSSI (dBm). | `+WIFISTATUS: CONNECTED, IP: 192.168.1.50...`<br>`OK` |
-| **12** | **`AT+WIFISCAN`** | `AT+WIFISCAN` | **Quét các mạng Wi-Fi 2.4GHz xung quanh** và in danh sách SSID + RSSI ra Terminal. | `+WIFISCAN: ... networks found`<br>`OK` |
-| **13** | **`AT+WIFICONN`** | `AT+WIFICONN="SSID","PASS"` | **Kết nối trực tiếp vào Wi-Fi** qua Serial và tự động lưu vào Flash NVS. | `+WIFICONN: CONNECTING...`<br>`OK` |
-| **14** | **`AT+WIFIRESET`** | `AT+WIFIRESET` | **Xóa sạch cấu hình Wi-Fi trong Flash NVS** và ngắt kết nối. | `+WIFIRESET: OK`<br>`OK` |
+| **11** | **`AT+WIFISTATUS`** | `AT+WIFISTATUS` | **Xem trạng thái Wi-Fi & Internet hiện tại**, địa chỉ IP được cấp, SSID, RSSI và kết quả Ping Internet. | `+WIFISTATUS: CONNECTED, IP: 192.168.1.50, INTERNET: ONLINE (Primary 1.1.1.1: 18 ms)`<br>`OK` |
+| **12** | **`AT+PING`** | `AT+PING`<br>`AT+PING="8.8.4.4"` | **Kiểm tra kết nối Internet qua ICMP Ping** (Chính: `1.1.1.1` & Dự phòng: `8.8.8.8`) hoặc ping đến IP bất kỳ. | `+PING: ONLINE (Primary 1.1.1.1: 18 ms)`<br>`OK` |
+| **13** | **`AT+WIFISCAN`** | `AT+WIFISCAN` | **Quét các mạng Wi-Fi 2.4GHz xung quanh** và in danh sách SSID + RSSI ra Terminal. | `+WIFISCAN: ... networks found`<br>`OK` |
+| **14** | **`AT+WIFICONN`** | `AT+WIFICONN="SSID","PASS"` | **Kết nối trực tiếp vào Wi-Fi** qua Serial và tự động lưu vào Flash NVS. | `+WIFICONN: CONNECTING...`<br>`OK` |
+| **15** | **`AT+WIFIRESET`** | `AT+WIFIRESET` | **Xóa sạch cấu hình Wi-Fi trong Flash NVS** và ngắt kết nối. | `+WIFIRESET: OK`<br>`OK` |
 
 ---
 

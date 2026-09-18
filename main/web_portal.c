@@ -1,4 +1,4 @@
-﻿#include "web_portal.h"
+#include "web_portal.h"
 #include "wifi_manager.h"
 #include <string.h>
 #include <stdlib.h>
@@ -59,7 +59,7 @@ static const char html_index[] =
 "<button type='button' class='btn btn-primary' onclick='saveWifi()' id='btnSave'>💾 Lưu & Kết Nối Ngay</button>"
 "<div id='statusBox' class='status-box'></div>"
 "</div>"
-"<div class='footer'>Thiết bị Loa Thanh Toán VNPT Standee v2.3</div>"
+"<div class='footer'>Thiết bị Loa Thanh Toán VNPT Standee</div>"
 "</div>"
 "<script>"
 "function showStatus(msg, type) {"
@@ -129,7 +129,10 @@ static const char html_index[] =
 "      .then(function(r){ return r.json(); })"
 "      .then(function(st){"
 "        if (st.status === 'connected') {"
-"          showStatus('🎉 KẾT NỐI THÀNH CÔNG!<br>IP: <b>' + st.ip + '</b><br>SSID: ' + st.ssid, 'success');"
+"          var net = '⏳ Đang kiểm tra Internet (Ping 1.1.1.1 / 8.8.8.8)...';"
+"          if (st.internet === 'online') net = '🌐 Internet: <b style=\"color:#276749;\">ONLINE (' + st.internet_info + ')</b>';"
+"          else if (st.internet === 'offline') net = '⚠️ <b style=\"color:#9b2c2c;\">Chưa có Internet (Không ping được 1.1.1.1 & 8.8.8.8)</b>';"
+"          showStatus('🎉 KẾT NỐI WI-FI THÀNH CÔNG!<br>IP: <b>' + st.ip + '</b><br>SSID: ' + st.ssid + '<br>' + net, 'success');"
 "        } else if (st.status === 'failed') {"
 "          showStatus('❌ Kết nối thất bại. Vui lòng kiểm tra lại mật khẩu!', 'error');"
 "          document.getElementById('btnSave').disabled = false;"
@@ -249,13 +252,16 @@ static esp_err_t post_connect_handler(httpd_req_t *req) {
     return httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
 }
 
-// GET /api/status - Get current Wi-Fi status
+// GET /api/status - Get current Wi-Fi & Internet status
 static esp_err_t get_status_handler(httpd_req_t *req) {
     wifi_mgr_status_t st = wifi_manager_get_status();
+    internet_status_t net_st = wifi_manager_get_internet_status();
     char ip[32] = {0};
     char ssid[64] = {0};
+    char net_info[128] = {0};
     wifi_manager_get_ip(ip, sizeof(ip));
     wifi_manager_get_current_ssid(ssid, sizeof(ssid));
+    wifi_manager_get_internet_info(net_info, sizeof(net_info));
     int8_t rssi = wifi_manager_get_rssi();
 
     const char *st_str = "idle";
@@ -264,10 +270,15 @@ static esp_err_t get_status_handler(httpd_req_t *req) {
     else if (st == WIFI_MGR_STATUS_FAILED) st_str = "failed";
     else if (st == WIFI_MGR_STATUS_AP_ACTIVE) st_str = "ap_active";
 
-    char buf[256];
+    const char *net_str = "unknown";
+    if (net_st == INTERNET_ONLINE) net_str = "online";
+    else if (net_st == INTERNET_OFFLINE) net_str = "offline";
+    else if (net_st == INTERNET_CHECKING) net_str = "checking";
+
+    char buf[384];
     snprintf(buf, sizeof(buf),
-             "{\"status\":\"%s\",\"ip\":\"%s\",\"ssid\":\"%s\",\"rssi\":%d}",
-             st_str, ip, ssid, (int)rssi);
+             "{\"status\":\"%s\",\"ip\":\"%s\",\"ssid\":\"%s\",\"rssi\":%d,\"internet\":\"%s\",\"internet_info\":\"%s\"}",
+             st_str, ip, ssid, (int)rssi, net_str, net_info);
 
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, buf, HTTPD_RESP_USE_STRLEN);
