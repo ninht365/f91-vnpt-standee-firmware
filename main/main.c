@@ -12,6 +12,8 @@
 #include "qrcodegen.h"
 #include "vnpt_logo_center.h"
 #include "vnpt_bg_data.h"
+#include "wifi_manager.h"
+#include "web_portal.h"
 
 static const char *TAG = "F91_VNPT_STANDEE";
 
@@ -44,7 +46,8 @@ typedef enum {
     STATE_STANDBY,
     STATE_QR_ACTIVE,
     STATE_RAW_STREAM,
-    STATE_CUSTOM_RAW_PERM
+    STATE_CUSTOM_RAW_PERM,
+    STATE_WIFI_CONFIG
 } app_state_t;
 
 static volatile app_state_t current_state = STATE_STANDBY;
@@ -430,6 +433,94 @@ static bool render_qr_payment_screen(const char *qr_payload, int timeout_sec) {
     return true;
 }
 
+// Render Wi-Fi Config Screen with Web Portal QR Code
+static bool render_wifi_config_screen(const char *ap_ssid, const char *url) {
+    ESP_LOGI(TAG, "Rendering Wi-Fi Config Screen: AP=\"%s\", URL=\"%s\"", ap_ssid, url);
+
+    bool ok = qrcodegen_encodeText(
+        url,
+        tempBuffer_global,
+        qrcode_global,
+        qrcodegen_Ecc_HIGH,
+        qrcodegen_VERSION_MIN,
+        qrcodegen_VERSION_MAX,
+        qrcodegen_Mask_AUTO,
+        true
+    );
+
+    if (!ok) {
+        ok = qrcodegen_encodeText(
+            url,
+            tempBuffer_global,
+            qrcode_global,
+            qrcodegen_Ecc_MEDIUM,
+            qrcodegen_VERSION_MIN,
+            qrcodegen_VERSION_MAX,
+            qrcodegen_Mask_AUTO,
+            true
+        );
+    }
+
+    if (!ok) {
+        ESP_LOGE(TAG, "QR Encoding failed for config URL!");
+        return false;
+    }
+
+    int qr_size = qrcodegen_getSize(qrcode_global);
+    int max_display_w = 180;
+    int scale = max_display_w / qr_size;
+    if (scale < 1) scale = 1;
+    if (scale > 7) scale = 7;
+
+    int qr_pixel_size = qr_size * scale;
+    int start_x = (LCD_W - qr_pixel_size) / 2;
+    int start_y = 65 + (180 - qr_pixel_size) / 2;
+
+    lcd_lock();
+
+    // 1. Pure White Canvas
+    lcd_clear_screen(COLOR_WHITE);
+
+    // 2. Top Blue Banner (VNPT Header)
+    lcd_fill_rect(0, 0, LCD_W, 44, COLOR_VNPT_BLUE);
+
+    // 3. Render QR Modules
+    for (int y = 0; y < qr_size; y++) {
+        for (int x = 0; x < qr_size; x++) {
+            bool module = qrcodegen_getModule(qrcode_global, x, y);
+            if (module) {
+                lcd_fill_rect(start_x + (x * scale), start_y + (y * scale), scale, scale, COLOR_BLACK);
+            }
+        }
+    }
+
+    // 4. Center VNPT Logo (36x36)
+    int center_x = start_x + (qr_pixel_size / 2);
+    int center_y = start_y + (qr_pixel_size / 2);
+    int logo_pad = 4;
+    int logo_box_x = center_x - (VNPT_LOGO_WIDTH / 2) - logo_pad;
+    int logo_box_y = center_y - (VNPT_LOGO_HEIGHT / 2) - logo_pad;
+    int logo_box_w = VNPT_LOGO_WIDTH + (logo_pad * 2);
+    int logo_box_h = VNPT_LOGO_HEIGHT + (logo_pad * 2);
+
+    lcd_fill_rect(logo_box_x, logo_box_y, logo_box_w, logo_box_h, COLOR_WHITE);
+    lcd_draw_vnpt_logo(center_x - (VNPT_LOGO_WIDTH / 2), center_y - (VNPT_LOGO_HEIGHT / 2));
+
+    // 5. Bottom Info Box
+    int box_x = 10;
+    int box_y = 260;
+    int box_w = LCD_W - 20;
+    int box_h = 48;
+    lcd_fill_rect(box_x, box_y, box_w, box_h, COLOR_VNPT_BLUE);
+
+    current_state = STATE_WIFI_CONFIG;
+    qr_countdown_sec = 0;
+
+    lcd_unlock();
+    ESP_LOGI(TAG, "Wi-Fi Config Screen rendered on LCD!");
+    return true;
+}
+
 // Process AT Commands from USB Serial
 static void process_at_command(const char *cmd) {
     ESP_LOGI(TAG, "Processing AT Command: \"%s\"", cmd);
@@ -455,7 +546,7 @@ static void process_at_command(const char *cmd) {
 
     // 2. AT+VER
     if (strcmp(cmd, "AT+VER") == 0) {
-        printf("+VER: F91_VNPT_STANDEE_V2.0\r\nOK\r\n");
+        printf("+VER: F91_VNPT_STANDEE_V2.3_WIFI\r\nOK\r\n");
         fflush(stdout);
         return;
     }
@@ -549,6 +640,118 @@ static void process_at_command(const char *cmd) {
         } else {
             printf("+QR_DISPLAY: ERROR\r\n");
         }
+        fflush(stdout);
+        return;
+    }
+
+    // 7. AT+WIFICFG / AT+WIFICONFIG - Start SoftAP Web Portal
+    if (strcmp(cmd, "AT+WIFICFG") == 0 || strcmp(cmd, "AT+WIFICONFIG") == 0) {
+        char ap_ssid[32] = {0};
+        wifi_manager_start_softap(ap_ssid, sizeof(ap_ssid));
+        web_portal_start();
+        render_wifi_config_screen(ap_ssid, "http://192.168.4.1");
+        printf("+WIFICFG: OK, SSID: %s, URL: http://192.168.4.1\r\nOK\r\n", ap_ssid);
+        fflush(stdout);
+        return;
+    }
+
+    // 8. AT+WIFISTATUS - Check Wi-Fi Status & IP
+    if (strcmp(cmd, "AT+WIFISTATUS") == 0) {
+        wifi_mgr_status_t st = wifi_manager_get_status();
+        char ip[32] = {0};
+        char ssid[64] = {0};
+        wifi_manager_get_ip(ip, sizeof(ip));
+        wifi_manager_get_current_ssid(ssid, sizeof(ssid));
+        int8_t rssi = wifi_manager_get_rssi();
+
+        const char *st_str = "IDLE";
+        if (st == WIFI_MGR_STATUS_CONNECTED) st_str = "CONNECTED";
+        else if (st == WIFI_MGR_STATUS_CONNECTING) st_str = "CONNECTING";
+        else if (st == WIFI_MGR_STATUS_FAILED) st_str = "FAILED";
+        else if (st == WIFI_MGR_STATUS_AP_ACTIVE) st_str = "AP_ACTIVE";
+
+        printf("+WIFISTATUS: %s, IP: %s, SSID: %s, RSSI: %d dBm\r\nOK\r\n", st_str, ip, ssid, (int)rssi);
+        fflush(stdout);
+        return;
+    }
+
+    // 9. AT+WIFISCAN - Scan available Wi-Fi networks
+    if (strcmp(cmd, "AT+WIFISCAN") == 0) {
+        uint16_t ap_count = 15;
+        wifi_ap_record_t *ap_records = malloc(sizeof(wifi_ap_record_t) * ap_count);
+        if (ap_records) {
+            esp_err_t ret = wifi_manager_scan_networks(ap_records, &ap_count);
+            if (ret == ESP_OK) {
+                printf("+WIFISCAN: %d networks found\r\n", (int)ap_count);
+                for (int i = 0; i < ap_count; i++) {
+                    if (strlen((char*)ap_records[i].ssid) == 0) continue;
+                    printf("  [%d] SSID: \"%s\", RSSI: %d dBm, Auth: %d\r\n",
+                           i + 1, (char*)ap_records[i].ssid, ap_records[i].rssi, ap_records[i].authmode);
+                }
+                printf("OK\r\n");
+            } else {
+                printf("+WIFISCAN: ERROR\r\n");
+            }
+            free(ap_records);
+        } else {
+            printf("+WIFISCAN: ERROR (OUT OF MEMORY)\r\n");
+        }
+        fflush(stdout);
+        return;
+    }
+
+    // 10. AT+WIFICONN="<ssid>","<pass>" - Connect to Wi-Fi directly
+    if (strncmp(cmd, "AT+WIFICONN=", 12) == 0) {
+        const char *p = cmd + 12;
+        while (*p == ' ' || *p == '\t') p++;
+        char ssid[64] = {0};
+        char pass[64] = {0};
+
+        if (*p == '"') {
+            p++;
+            const char *q1 = strchr(p, '"');
+            if (q1) {
+                size_t slen = q1 - p;
+                if (slen >= sizeof(ssid)) slen = sizeof(ssid) - 1;
+                strncpy(ssid, p, slen);
+                ssid[slen] = '\0';
+
+                const char *comma = strchr(q1 + 1, ',');
+                if (comma) {
+                    const char *p2 = comma + 1;
+                    while (*p2 == ' ' || *p2 == '\t') p2++;
+                    if (*p2 == '"') {
+                        p2++;
+                        const char *q2 = strchr(p2, '"');
+                        if (q2) {
+                            size_t plen = q2 - p2;
+                            if (plen >= sizeof(pass)) plen = sizeof(pass) - 1;
+                            strncpy(pass, p2, plen);
+                            pass[plen] = '\0';
+                        }
+                    } else {
+                        strncpy(pass, p2, sizeof(pass) - 1);
+                    }
+                }
+            }
+        }
+
+        if (strlen(ssid) > 0) {
+            wifi_manager_save_credentials(ssid, pass);
+            wifi_manager_connect_sta(ssid, pass);
+            printf("+WIFICONN: CONNECTING TO \"%s\"...\r\nOK\r\n", ssid);
+        } else {
+            printf("+WIFICONN: ERROR (INVALID SYNTAX: AT+WIFICONN=\"SSID\",\"PASS\")\r\n");
+        }
+        fflush(stdout);
+        return;
+    }
+
+    // 11. AT+WIFIRESET - Erase saved Wi-Fi credentials
+    if (strcmp(cmd, "AT+WIFIRESET") == 0) {
+        wifi_manager_erase_credentials();
+        wifi_manager_stop_softap();
+        printf("+WIFIRESET: OK\r\nOK\r\n");
         fflush(stdout);
         return;
     }
@@ -677,7 +880,7 @@ void app_main(void) {
     setvbuf(stdout, NULL, _IONBF, 0);
 
     ESP_LOGI(TAG, "==================================================");
-    ESP_LOGI(TAG, " F91 VNPT Standee (HD Background & Countdown UI)  ");
+    ESP_LOGI(TAG, "                 F91 VNPT Standee                 ");
     ESP_LOGI(TAG, "==================================================");
 
     // Create FreeRTOS Mutex
@@ -737,7 +940,18 @@ void app_main(void) {
     // 6. Show Initial High-Definition VNPT Standby Screen
     render_standby_screen();
 
-    // 7. Create FreeRTOS Tasks
+    // 7. Initialize Wi-Fi Manager & NVS Storage
+    wifi_manager_init();
+    char saved_ssid[64] = {0};
+    char saved_pass[64] = {0};
+    if (wifi_manager_load_credentials(saved_ssid, sizeof(saved_ssid), saved_pass, sizeof(saved_pass))) {
+        ESP_LOGI(TAG, "Found saved Wi-Fi: \"%s\". Auto-connecting in background...", saved_ssid);
+        wifi_manager_connect_sta(saved_ssid, saved_pass);
+    } else {
+        ESP_LOGI(TAG, "No saved Wi-Fi credentials. Ready for Web Portal or AT+WIFICONN.");
+    }
+
+    // 8. Create FreeRTOS Tasks
     xTaskCreate(usb_serial_task, "usb_serial_task", 8192, NULL, 5, NULL);
     xTaskCreate(timer_task, "timer_task", 4096, NULL, 5, NULL);
 
