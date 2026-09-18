@@ -57,7 +57,6 @@ static volatile app_state_t current_state = STATE_STANDBY;
 static volatile int qr_countdown_sec = 0;
 static int raw_stream_timeout = 0;
 static size_t raw_stream_bytes_received = 0;
-static bool raw_skip_newline = false;
 static char current_payload[512] = "https://vnpt.vn";
 static bool at_echo_enabled = true;
 
@@ -567,7 +566,6 @@ static void process_at_command(const char *cmd) {
         int timeout = atoi(cmd + 9);
         raw_stream_timeout = timeout;
         raw_stream_bytes_received = 0;
-        raw_skip_newline = true;
 
         lcd_lock();
         lcd_set_window(0, 0, LCD_W - 1, LCD_H - 1);
@@ -804,14 +802,8 @@ static void usb_serial_task(void *pvParameters) {
             if (bytes > 0) {
                 raw_idle_count = 0;
                 for (int i = 0; i < bytes; i++) {
-                    uint8_t b = rx_chunk[i];
-                    if (raw_skip_newline) {
-                        if (b == '\r' || b == '\n' || b == ' ') continue;
-                        raw_skip_newline = false;
-                    }
-
                     if (raw_stream_bytes_received < TOTAL_RAW_IMAGE_BYTES) {
-                        set_data_bus(b);
+                        set_data_bus(rx_chunk[i]);
                         gpio_set_level(PIN_LCD_WR, 0);
                         esp_rom_delay_us(1);
                         gpio_set_level(PIN_LCD_WR, 1);
@@ -823,7 +815,7 @@ static void usb_serial_task(void *pvParameters) {
                     gpio_set_level(PIN_LCD_CS, 1);
                     lcd_unlock();
 
-                    ESP_LOGI(TAG, "RAW IMAGE RECEIVED (153,600 bytes)!");
+                    ESP_LOGI(TAG, "RAW IMAGE RECEIVED (%d bytes)!", (int)raw_stream_bytes_received);
                     printf("+DTIME: OK\r\n");
                     fflush(stdout);
 
@@ -833,6 +825,8 @@ static void usb_serial_task(void *pvParameters) {
                     } else {
                         current_state = STATE_CUSTOM_RAW_PERM;
                     }
+                } else {
+                    vTaskDelay(pdMS_TO_TICKS(1)); // Yield CPU to prevent Watchdog timeout
                 }
             } else {
                 raw_idle_count++;
@@ -887,6 +881,9 @@ static void usb_serial_task(void *pvParameters) {
 static void timer_task(void *pvParameters) {
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(1000));
+        if (current_state == STATE_RAW_STREAM) {
+            continue; // Skip mutex lock while streaming raw image data
+        }
         lcd_lock();
         if (current_state == STATE_QR_ACTIVE && qr_countdown_sec > 0) {
             qr_countdown_sec--;
