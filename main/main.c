@@ -12,6 +12,8 @@
 #include "qrcodegen.h"
 #include "vnpt_logo_center.h"
 #include "vnpt_bg_data.h"
+#include "esp_event.h"
+#include "esp_netif.h"
 #include "wifi_manager.h"
 #include "web_server.h"
 #include "nvs_storage.h"
@@ -974,8 +976,12 @@ void app_main(void) {
     // 6. Show Initial High-Definition VNPT Standby Screen
     render_standby_screen();
 
-    // 7. Initialize Wi-Fi Manager & NVS Storage
-    wifi_manager_init();
+    // 7. Initialize NVS, Netif, Event Loop & Wi-Fi Manager
+    ESP_ERROR_CHECK(nvs_storage_init());
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+
+    ESP_ERROR_CHECK(wifi_manager_init());
     wifi_manager_set_ap_exit_callback(on_wifi_ap_exit_event);
 
     wifi_credentials_t saved;
