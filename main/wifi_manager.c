@@ -319,16 +319,24 @@ esp_err_t wifi_manager_connect_sta(const char *ssid, const char *password) {
     esp_wifi_disconnect();
     vTaskDelay(pdMS_TO_TICKS(100));
 
-    wifi_config_t wifi_config = {0};
+    wifi_config_t wifi_config = {
+        .sta = {
+            .scan_method = WIFI_ALL_CHANNEL_SCAN,
+            .sort_method = WIFI_CONNECT_AP_BY_SIGNAL,
+            .threshold = {
+                .authmode = (password && strlen(password) > 0) ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN,
+                .rssi = -127,
+            },
+            .pmf_cfg = {
+                .capable = true,
+                .required = false,
+            },
+        },
+    };
     strncpy((char*)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
     if (password && strlen(password) > 0) {
         strncpy((char*)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
-        wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
-    } else {
-        wifi_config.sta.threshold.authmode = WIFI_AUTH_OPEN;
     }
-    wifi_config.sta.pmf_cfg.capable = true;
-    wifi_config.sta.pmf_cfg.required = false;
 
     strncpy(current_sta_ssid, ssid, sizeof(current_sta_ssid) - 1);
     memset(current_sta_ip, 0, sizeof(current_sta_ip));
@@ -345,7 +353,7 @@ esp_err_t wifi_manager_connect_sta(const char *ssid, const char *password) {
     }
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    ESP_LOGI(TAG, "Connecting to AP SSID: \"%s\" (Threshold Auth: %s)...",
+    ESP_LOGI(TAG, "Connecting to AP SSID: \"%s\" (All-Channel Scan, Threshold Auth: %s)...",
              ssid, (password && strlen(password) > 0) ? "WPA2" : "OPEN");
     return esp_wifi_connect();
 }
@@ -367,16 +375,27 @@ esp_err_t wifi_manager_start_softap(char *out_ap_ssid, size_t max_len) {
         out_ap_ssid[max_len - 1] = '\0';
     }
 
+    // Set static IP and DHCP for SoftAP interface (192.168.4.1)
+    if (ap_netif) {
+        esp_netif_ip_info_t ip_info;
+        IP4_ADDR(&ip_info.ip, 192, 168, 4, 1);
+        IP4_ADDR(&ip_info.gw, 192, 168, 4, 1);
+        IP4_ADDR(&ip_info.netmask, 255, 255, 255, 0);
+        esp_netif_dhcps_stop(ap_netif);
+        esp_netif_set_ip_info(ap_netif, &ip_info);
+        esp_netif_dhcps_start(ap_netif);
+    }
+
     wifi_config_t ap_config = {
         .ap = {
-            .channel = 6, // Standard channel 6 with optimal 2.4GHz propagation
+            .channel = 1, // Universal Channel 1 (highest compatibility for all laptops/phones)
             .max_connection = 4,
             .authmode = WIFI_AUTH_OPEN,
             .ssid_hidden = 0,
             .beacon_interval = 100,
             .pmf_cfg = {
+                .capable = true,   // Critical: Windows 10/11 requires PMF capable=true
                 .required = false,
-                .capable = false,
             },
         },
     };
@@ -392,7 +411,7 @@ esp_err_t wifi_manager_start_softap(char *out_ap_ssid, size_t max_len) {
     start_dns_server();
 
     current_wifi_status = WIFI_MGR_STATUS_AP_ACTIVE;
-    ESP_LOGI(TAG, "SoftAP active! SSID: \"%s\", Channel: 6, PS_NONE, Max Tx Power, DNS Captive active", ap_ssid);
+    ESP_LOGI(TAG, "SoftAP active! SSID: \"%s\", Channel: 1, PMF: Capable, PS_NONE, Max Tx Power, DNS Captive active", ap_ssid);
     return ESP_OK;
 }
 
