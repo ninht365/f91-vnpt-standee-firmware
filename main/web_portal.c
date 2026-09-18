@@ -288,7 +288,7 @@ esp_err_t web_portal_start(void) {
     if (server) return ESP_OK;
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 8;
+    config.max_uri_handlers = 12;
     config.stack_size = 8192;
 
     ESP_LOGI(TAG, "Starting Web Portal HTTP Server on port: '%d'", config.server_port);
@@ -300,6 +300,16 @@ esp_err_t web_portal_start(void) {
             .user_ctx  = NULL
         };
         httpd_register_uri_handler(server, &root_uri);
+
+        // Captive Portal URIs for iOS / Android / Windows
+        httpd_uri_t apple_uri = { .uri = "/hotspot-detect.html", .method = HTTP_GET, .handler = get_root_handler, .user_ctx = NULL };
+        httpd_register_uri_handler(server, &apple_uri);
+
+        httpd_uri_t android_uri1 = { .uri = "/generate_204", .method = HTTP_GET, .handler = get_root_handler, .user_ctx = NULL };
+        httpd_register_uri_handler(server, &android_uri1);
+
+        httpd_uri_t android_uri2 = { .uri = "/gen_204", .method = HTTP_GET, .handler = get_root_handler, .user_ctx = NULL };
+        httpd_register_uri_handler(server, &android_uri2);
 
         httpd_uri_t scan_uri = {
             .uri       = "/api/scan",
@@ -325,7 +335,7 @@ esp_err_t web_portal_start(void) {
         };
         httpd_register_uri_handler(server, &status_uri);
 
-        ESP_LOGI(TAG, "Web Portal handlers registered successfully!");
+        ESP_LOGI(TAG, "Web Portal & Captive Portal handlers registered successfully!");
         return ESP_OK;
     }
 
