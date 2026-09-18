@@ -163,22 +163,22 @@ static void internet_check_task(void *pvParameters) {
 static void wifi_event_handler(void* arg, esp_event_base_t event_base,
                                int32_t event_id, void* event_data) {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-        ESP_LOGI(TAG, "Wi-Fi STA started, connecting...");
-        esp_wifi_connect();
-        current_wifi_status = WIFI_MGR_STATUS_CONNECTING;
-        current_internet_status = INTERNET_UNKNOWN;
+        ESP_LOGI(TAG, "Wi-Fi STA started, ready to connect...");
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         wifi_event_sta_disconnected_t *disc = (wifi_event_sta_disconnected_t*) event_data;
         ESP_LOGW(TAG, "Wi-Fi STA disconnected, reason: %d", disc->reason);
         current_internet_status = INTERNET_OFFLINE;
-        if (retry_num < MAX_RETRY_COUNT) {
-            esp_wifi_connect();
-            retry_num++;
-            current_wifi_status = WIFI_MGR_STATUS_CONNECTING;
-            ESP_LOGI(TAG, "Retrying connection (%d/%d)...", retry_num, MAX_RETRY_COUNT);
-        } else {
-            current_wifi_status = WIFI_MGR_STATUS_FAILED;
-            ESP_LOGE(TAG, "Failed to connect to AP after %d attempts", MAX_RETRY_COUNT);
+        memset(current_sta_ip, 0, sizeof(current_sta_ip));
+
+        if (current_wifi_status == WIFI_MGR_STATUS_CONNECTING) {
+            if (retry_num < MAX_RETRY_COUNT) {
+                retry_num++;
+                ESP_LOGI(TAG, "Retrying connection (%d/%d)...", retry_num, MAX_RETRY_COUNT);
+                esp_wifi_connect();
+            } else {
+                current_wifi_status = WIFI_MGR_STATUS_FAILED;
+                ESP_LOGE(TAG, "Failed to connect to AP \"%s\" after %d attempts", current_sta_ssid, MAX_RETRY_COUNT);
+            }
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
@@ -193,9 +193,11 @@ static void wifi_event_handler(void* arg, esp_event_base_t event_base,
         }
 
         // Start Internet Health Check task
-        if (!internet_check_task_handle) {
-            xTaskCreate(internet_check_task, "inet_chk_task", 4096, NULL, 5, &internet_check_task_handle);
+        if (internet_check_task_handle) {
+            vTaskDelete(internet_check_task_handle);
+            internet_check_task_handle = NULL;
         }
+        xTaskCreate(internet_check_task, "inet_chk_task", 4096, NULL, 5, &internet_check_task_handle);
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED) {
         wifi_event_ap_staconnected_t* event = (wifi_event_ap_staconnected_t*) event_data;
         ESP_LOGI(TAG, "Station "MACSTR" joined SoftAP, AID=%d", MAC2STR(event->mac), event->aid);
@@ -313,16 +315,23 @@ esp_err_t wifi_manager_erase_credentials(void) {
 esp_err_t wifi_manager_connect_sta(const char *ssid, const char *password) {
     if (!ssid || strlen(ssid) == 0) return ESP_ERR_INVALID_ARG;
 
+    // Disconnect active/pending STA connection first to prevent "sta is connected" conflict
+    esp_wifi_disconnect();
+    vTaskDelay(pdMS_TO_TICKS(100));
+
     wifi_config_t wifi_config = {0};
     strncpy((char*)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
-    if (password) {
+    if (password && strlen(password) > 0) {
         strncpy((char*)wifi_config.sta.password, password, sizeof(wifi_config.sta.password) - 1);
+        wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
+    } else {
+        wifi_config.sta.threshold.authmode = WIFI_AUTH_OPEN;
     }
-    wifi_config.sta.threshold.authmode = WIFI_AUTH_OPEN;
     wifi_config.sta.pmf_cfg.capable = true;
     wifi_config.sta.pmf_cfg.required = false;
 
     strncpy(current_sta_ssid, ssid, sizeof(current_sta_ssid) - 1);
+    memset(current_sta_ip, 0, sizeof(current_sta_ip));
     retry_num = 0;
     current_wifi_status = WIFI_MGR_STATUS_CONNECTING;
     current_internet_status = INTERNET_UNKNOWN;
@@ -336,11 +345,18 @@ esp_err_t wifi_manager_connect_sta(const char *ssid, const char *password) {
     }
 
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-    ESP_LOGI(TAG, "Connecting to AP SSID: \"%s\"...", ssid);
+    ESP_LOGI(TAG, "Connecting to AP SSID: \"%s\" (Threshold Auth: %s)...",
+             ssid, (password && strlen(password) > 0) ? "WPA2" : "OPEN");
     return esp_wifi_connect();
 }
 
 esp_err_t wifi_manager_start_softap(char *out_ap_ssid, size_t max_len) {
+    // When entering SoftAP configuration mode, disconnect STA to avoid stale connections
+    esp_wifi_disconnect();
+    memset(current_sta_ip, 0, sizeof(current_sta_ip));
+    current_wifi_status = WIFI_MGR_STATUS_AP_ACTIVE;
+    current_internet_status = INTERNET_UNKNOWN;
+
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
     char ap_ssid[32];
