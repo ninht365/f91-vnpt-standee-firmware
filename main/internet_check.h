@@ -1,13 +1,7 @@
 /**
  * @file internet_check.h
- * @brief Kiem tra ket noi Internet thuc su bang ICMP ping.
+ * @brief Kiem tra ket noi Internet bang ICMP ping.
  *
- * Sau khi ESP32 nhan duoc IP tu router, viec chi co IP khong dam bao
- * co Internet (router co the khong co WAN). Module nay ping 1.1.1.1
- * (Cloudflare) de xac nhan co ket noi Internet thuc su.
- *
- * Neu ping that bai, tu dong thu lai sau CONFIG_INTERNET_CHECK_RETRY_SEC giay.
- * Neu ping thanh cong, goi callback(true) va dung retry.
  */
 #pragma once
 #include <stdbool.h>
